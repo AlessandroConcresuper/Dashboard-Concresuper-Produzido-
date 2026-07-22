@@ -55,8 +55,8 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 .erro-box b{color:#FF5C5C}
 .toast{position:fixed;bottom:20px;right:20px;background:#F5B400;color:#000;padding:12px 20px;border-radius:8px;font-weight:700;font-size:13px;display:none;z-index:1000}
 .empty-state{text-align:center;padding:80px 20px;color:#8CA0B3}
+.linha-vermelha{position:absolute;left:0;right:0;height:2px;background:#FF5C5C;border-top:2px dashed #FF5C5C;z-index:5;pointer-events:none}
 @media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.charts-grid{grid-template-columns:1fr}}
-@media(max-width:600px){.kpi-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -120,6 +120,11 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <div class="panel chart-full"><div class="panel-title">Produzido vs Meta 100% Personalizada</div><div class="chart-area" id="chartMeta100Area"><canvas id="chartMeta100"></canvas></div></div>
 </div>
 
+<div class="section-title">Percentual de Atingimento por Vendedor <span class="badge">%</span></div>
+<div class="charts-grid">
+<div class="panel chart-full"><div class="panel-title">% Atingido contra a Meta 100% Individual</div><div class="chart-area"><canvas id="chartPctMeta100"></canvas></div></div>
+</div>
+
 <div class="toast" id="toast">Carregando...</div>
 
 <script>
@@ -178,12 +183,9 @@ function processar(registros) {
     var produzido = parseNum(row[3]);
     var meta = parseNum(row[4]);
     var dataRaw = row[5];
-    // Pula linhas sem vendedor ou com cabeçalhos repetidos
     if (!vendedor || vendedor.match(/^(cidade|vendedor|total|meta|)$/i)) continue;
-    // Pula linhas onde a coluna H tem "Meta 100%" (linha de título da tabela lateral)
     var colH = String(row[7] || '').trim();
     if (colH.match(/meta\s*100/i)) continue;
-    // Pula linhas que parecem ser da tabela Meta 100% (tem nome no J mas não tem produção)
     var colJ = String(row[9] || '').trim();
     if (colJ && colJ !== 'Vendedor' && colJ !== 'Cidade' && produzido === 0) continue;
     if (isNaN(produzido) || produzido === 0) continue;
@@ -286,7 +288,7 @@ function renderizarGraficos(vends) {
   var paleta = ['#F5B400','#4C8DFF','#2ECC71','#FF6B6B','#B084F5','#4FD1C5','#F783AC','#F0A868','#63C7FF','#E4C441'];
   graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}}} });
 
-  // NOVO GRAFICO: Meta 100% vs Produzido - com HTML overlay para porcentagem
+  // Grafico: Meta 100% vs Produzido (sem labels customizados)
   destruir('meta100');
   var area = document.getElementById('chartMeta100Area');
   if (!area) return;
@@ -295,90 +297,65 @@ function renderizarGraficos(vends) {
     var canvas = document.getElementById('chartMeta100');
     if (!canvas) { area.innerHTML = '<canvas id="chartMeta100"></canvas>'; canvas = document.getElementById('chartMeta100'); }
     var cores100 = vends.map(function(v) { return v.meta100 > 0 ? (v.prod >= v.meta100 ? '#2ECC71' : '#F5B400') : 'rgba(255,255,255,.1)'; });
-    
     graf.meta100 = new Chart(canvas, {
       type: 'bar',
       data: { labels: nomes, datasets: [
-        { 
-          label: 'Meta 100% Personalizada', 
-          data: vends.map(function(v){return v.meta100;}), 
-          backgroundColor: 'rgba(255,255,255,.15)', 
-          borderRadius: 5 
-        },
-        { 
-          label: 'Volume Produzido', 
-          data: prods, 
-          backgroundColor: cores100, 
-          borderRadius: 5 
-        }
+        { label: 'Meta 100% Personalizada', data: vends.map(function(v){return v.meta100;}), backgroundColor: 'rgba(255,255,255,.15)', borderRadius: 5 },
+        { label: 'Volume Produzido', data: prods, backgroundColor: cores100, borderRadius: 5 }
       ]},
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { 
-          legend: { position: 'top', labels: { color: '#fff' } },
-          tooltip: {
-            callbacks: {
-              afterLabel: function(context) {
-                if (context.dataset.label === 'Volume Produzido') {
-                  var idx = context.dataIndex;
-                  var v = vends[idx];
-                  if (v && v.meta100 > 0) {
-                    var pct = (v.prod / v.meta100 * 100);
-                    return 'Atingimento: ' + pct.toFixed(1).replace('.', ',') + '% da Meta 100%';
-                  }
-                }
-                return '';
-              }
-            }
-          }
-        },
-        scales: { y: { grid: grid, beginAtZero: true } }
-      }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { color: '#fff' } } }, scales: { y: { grid: grid, beginAtZero: true } } }
     });
-    
-    // Cria overlay HTML com os percentuais em cima das barras
-    // (mais confiável que afterDraw no canvas)
-    setTimeout(function() {
-      adicionarLabelsPercentuais(vends);
-    }, 100);
-    
   } else {
     area.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
   }
-}
 
-function adicionarLabelsPercentuais(vends) {
-  var area = document.getElementById('chartMeta100Area');
-  if (!area) return;
-  // Remove labels antigos se existirem
-  var antigos = area.querySelectorAll('.pct-label-meta100');
-  antigos.forEach(function(el){el.remove();});
-  
-  // Pega a escala do chart pra posicionar os labels
-  var chart = graf.meta100;
-  if (!chart) return;
-  
-  var chartArea = chart.chartArea;
-  var yScale = chart.scales.y;
-  var xScale = chart.scales.x;
-  
-  // Dataset do volume produzido (index 1)
-  var meta = chart.getDatasetMeta(1);
-  
-  meta.data.forEach(function(bar, index) {
-    var v = vends[index];
-    if (!v || v.meta100 <= 0) return;
-    var pct = (v.prod / v.meta100 * 100);
-    var cor = pct >= 100 ? '#2ECC71' : '#F5B400';
-    var texto = pct.toFixed(1).replace('.', ',') + '%';
-    
-    var label = document.createElement('div');
-    label.className = 'pct-label-meta100';
-    label.textContent = texto;
-    label.style.cssText = 'position:absolute;top:' + (bar.y - 20) + 'px;left:50%;transform:translateX(-50%);color:' + cor + ';font-weight:800;font-size:13px;font-family:Inter,sans-serif;pointer-events:none;text-shadow:0 0 4px rgba(0,0,0,.8);white-space:nowrap;z-index:10;';
-    area.appendChild(label);
-  });
+  // NOVO GRAFICO SIMPLES: Percentual de atingimento contra Meta 100%
+  destruir('pctMeta100');
+  var canvasPct = document.getElementById('chartPctMeta100');
+  if (!canvasPct) return;
+  if (temMeta100) {
+    var pctsMeta100 = vends.map(function(v) {
+      return v.meta100 > 0 ? Math.round(v.prod / v.meta100 * 100) : 0;
+    });
+    var coresPct = vends.map(function(v) {
+      var p = v.meta100 > 0 ? (v.prod / v.meta100 * 100) : 0;
+      return p >= 100 ? '#2ECC71' : (p >= 70 ? '#F5B400' : '#FF5C5C');
+    });
+    graf.pctMeta100 = new Chart(canvasPct, {
+      type: 'bar',
+      data: { 
+        labels: nomes, 
+        datasets: [{ 
+          label: '% Atingido', 
+          data: pctsMeta100, 
+          backgroundColor: coresPct, 
+          borderRadius: 5 
+        }]
+      },
+      options: { 
+        responsive: true, 
+        maintainAspectRatio: false,
+        plugins: { 
+          legend: { display: false }
+        }, 
+        scales: { 
+          y: { 
+            grid: grid, 
+            beginAtZero: true, 
+            max: Math.max(100, Math.max.apply(null, pctsMeta100) * 1.1),
+            ticks: { 
+              callback: function(val) { return val + '%'; }
+            }
+          },
+          x: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  } else {
+    document.getElementById('chartPctMeta100').parentElement.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
+  }
 }
 
 function renderizarProgresso(vends) {
