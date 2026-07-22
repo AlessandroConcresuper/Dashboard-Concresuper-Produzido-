@@ -277,7 +277,6 @@ function renderizarGraficos(vends) {
   var paleta = ['#F5B400','#4C8DFF','#2ECC71','#FF6B6B','#B084F5','#4FD1C5','#F783AC','#F0A868','#63C7FF','#E4C441'];
   graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}}} });
 
-  // NOVO GRAFICO: Meta 100% vs Produzido - SEM plugin externo
   destruir('meta100');
   var area = document.getElementById('chartMeta100Area');
   if (!area) return;
@@ -286,46 +285,13 @@ function renderizarGraficos(vends) {
     var canvas = document.getElementById('chartMeta100');
     if (!canvas) { area.innerHTML = '<canvas id="chartMeta100"></canvas>'; canvas = document.getElementById('chartMeta100'); }
     var cores100 = vends.map(function(v) { return v.meta100 > 0 ? (v.prod >= v.meta100 ? '#2ECC71' : '#F5B400') : 'rgba(255,255,255,.1)'; });
-    var pctsMeta100 = vends.map(function(v) { return v.meta100 > 0 ? (v.prod / v.meta100 * 100) : 0; });
-    
-    // Plugin customizado para mostrar % nas barras (sem dependência externa)
-    var labelPlugin = {
-      id: 'labelPercent',
-      afterDraw: function(chart) {
-        var ctx = chart.ctx;
-        chart.data.datasets.forEach(function(dataset, i) {
-          if (dataset.label === 'Volume Produzido') {
-            var meta = chart.getDatasetMeta(i);
-            meta.data.forEach(function(bar, index) {
-              var pct = pctsMeta100[index];
-              if (pct > 0) {
-                var valor = pct.toFixed(1).replace('.', ',') + '%';
-                ctx.fillStyle = pct >= 100 ? '#2ECC71' : '#F5B400';
-                ctx.font = 'bold 13px Inter, sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(valor, bar.x, bar.y - 8);
-              }
-            });
-          }
-        });
-      }
-    };
-    
-    Chart.register(labelPlugin);
-    
     graf.meta100 = new Chart(canvas, {
       type: 'bar',
       data: { labels: nomes, datasets: [
         { label: 'Meta 100% Personalizada', data: vends.map(function(v){return v.meta100;}), backgroundColor: 'rgba(255,255,255,.15)', borderRadius: 5 },
         { label: 'Volume Produzido', data: prods, backgroundColor: cores100, borderRadius: 5 }
       ]},
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'top', labels: { color: '#fff' } } },
-        scales: { y: { grid: grid, beginAtZero: true } }
-      },
-      plugins: [labelPlugin]
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { color: '#fff' } } }, scales: { y: { grid: grid, beginAtZero: true } } }
     });
   } else {
     area.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
