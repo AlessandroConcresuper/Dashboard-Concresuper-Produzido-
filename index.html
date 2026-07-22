@@ -178,24 +178,32 @@ function toast(m) {
 }
 
 function processar(registros) {
-  // Lê os checkpoints da planilha (colunas M-N)
+  // Lê os checkpoints da planilha (colunas M-N) - suporta valores formatados e crus
   checkpointsPlanilha = [];
   for (var i = 0; i < registros.length; i++) {
     var row = registros[i];
-    var colM = String(row[12] || '').trim(); // Checkpoint
-    var colN = row[13]; // Data limite
+    var colM = String(row[12] || '').trim();
+    var colN = row[13];
+    
+    // Tenta match com string tipo "25%" ou número tipo 0.25
+    var pctCheck = null;
     if (colM.match(/^(25%|50%|75%|100%)$/)) {
+      pctCheck = parseInt(colM) / 100;
+    } else {
+      var num = parseNum(colM);
+      if (num === 0.25 || num === 0.50 || num === 0.75 || num === 1.00) {
+        pctCheck = num;
+      }
+    }
+    
+    if (pctCheck !== null) {
       var dt = parseData(colN);
       if (dt) {
-        checkpointsPlanilha.push({
-          chave: colM,
-          pct: parseInt(colM) / 100,
-          data: dt
-        });
+        var rotulo = Math.round(pctCheck * 100) + '%';
+        checkpointsPlanilha.push({ chave: rotulo, pct: pctCheck, data: dt });
       }
     }
   }
-  // Ordena: 25%, 50%, 75%, 100%
   var ordem = {'25%':1,'50%':2,'75%':3,'100%':4};
   checkpointsPlanilha.sort(function(a,b){return (ordem[a.chave]||99) - (ordem[b.chave]||99);});
 
@@ -259,7 +267,8 @@ async function carregarDados() {
     var r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) throw new Error('Arquivo dados.xlsx não encontrado (HTTP ' + r.status + ').');
     var buffer = await r.arrayBuffer();
-    var wb = XLSX.read(buffer, { type: 'array', cellDates: true, raw: true });
+    // SEM raw:true para preservar formatação de porcentagem e datas
+    var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
     var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
     processar(dadosBrutos);
   } catch(e) {
@@ -316,7 +325,7 @@ function renderizarCheckpoints(vends) {
   var mesNome = meses[agora.getMonth()];
   
   if (checkpointsPlanilha.length === 0) {
-    info.innerHTML = 'Nenhum checkpoint configurado. Adicione na planilha as colunas <b>Checkpoint</b> e <b>Data limite</b>.';
+    info.innerHTML = 'Nenhum checkpoint configurado. Adicione na planilha as colunas <b>Checkpoint</b> e <b>Data limite</b> com valores 25%, 50%, 75%, 100%.';
     container.innerHTML = '';
     return;
   }
@@ -349,15 +358,10 @@ function renderizarCheckpoints(vends) {
       var noPrazo = hoje <= cp.data;
       
       var icon, cor, texto;
-      if (atingiu && noPrazo) {
-        icon = '✅'; cor = '#2ECC71'; texto = 'Comissão garantida';
-      } else if (atingiu && !noPrazo) {
-        icon = '⚠️'; cor = '#F5B400'; texto = 'Atingiu, prazo expirado';
-      } else if (!atingiu && noPrazo) {
-        icon = '⏳'; cor = '#5B9FFF'; texto = 'Em andamento';
-      } else {
-        icon = '❌'; cor = '#FF5C5C'; texto = 'Prazo expirado';
-      }
+      if (atingiu && noPrazo) { icon = '✅'; cor = '#2ECC71'; texto = 'Comissão garantida'; }
+      else if (atingiu && !noPrazo) { icon = '⚠️'; cor = '#F5B400'; texto = 'Atingiu, prazo expirado'; }
+      else if (!atingiu && noPrazo) { icon = '⏳'; cor = '#5B9FFF'; texto = 'Em andamento'; }
+      else { icon = '❌'; cor = '#FF5C5C'; texto = 'Prazo expirado'; }
       
       html += '<td>';
       html += '<span class="chk-status" style="color:' + cor + '">' + icon + ' ' + valor.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' m³</span>';
@@ -379,18 +383,54 @@ function renderizarGraficos(vends) {
   Chart.defaults.color = '#8CA0B3'; Chart.defaults.font.family = 'Inter';
   var grid = { color: 'rgba(255,255,255,.05)' }, nomes = vends.map(function(v){return v.nome;}), prods = vends.map(function(v){return v.prod;}), metas = vends.map(function(v){return v.meta;});
   var cores = vends.map(function(v){return v.pct >= 100 ? '#2ECC71' : '#F5B400';});
+
+  // Plugin para mostrar % nas barras (usado nos gráficos que o usuário pediu)
+  function criarPluginPct(vends, dataKey) {
+    return {
+      id: 'pctLabels',
+      afterDraw: function(chart) {
+        var ctx = chart.ctx;
+        chart.data.datasets.forEach(function(dataset, i) {
+          if (dataset.label === 'Meta 100% Personalizada' || dataset.label === '% Atingido') return;
+          var meta = chart.getDatasetMeta(i);
+          meta.data.forEach(function(bar, index) {
+            var pct = vends[index] ? vends[index].pct : 0;
+            if (pct <= 0) return;
+            var valor = pct.toFixed(1).replace('.', ',') + '%';
+            ctx.fillStyle = pct >= 100 ? '#2ECC71' : '#F5B400';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(valor, bar.x, bar.y - 6);
+          });
+        });
+      }
+    };
+  }
+
+  // Ranking por Volume Produzido (com %)
   destruir('rank');
-  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}} });
+  var pluginRank = criarPluginPct(vends);
+  Chart.register(pluginRank);
+  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}}, plugins:[pluginRank] });
+
+  // Comparativo: Meta vs Realizado (com %)
   destruir('metaProd');
-  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}} });
+  var pluginMetaProd = criarPluginPct(vends);
+  Chart.register(pluginMetaProd);
+  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}}, plugins:[pluginMetaProd] });
+
+  // Evolução Diária (sem %)
   destruir('evo');
   var evo = {}; filtrados.forEach(function(r){var k=r.dia; if (k !== 'N/A') evo[k] = (evo[k]||0) + r.produzido; });
   var labs = Object.keys(evo).sort(function(a,b){var ma=a.match(/(\d{2})\/(\d{2})\/(\d{4})/),mb=b.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(ma&&mb) return new Date(ma[3],ma[2]-1,ma[1])-new Date(mb[3],mb[2]-1,mb[1]); return a.localeCompare(b); });
   if (labs.length > 0) { graf.evo = new Chart(document.getElementById('chartEvo'), { type:'line', data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}} }); }
+
+  // Participação (sem %, é doughnut)
   destruir('part');
   var paleta = ['#F5B400','#4C8DFF','#2ECC71','#FF6B6B','#B084F5','#4FD1C5','#F783AC','#F0A868','#63C7FF','#E4C441'];
   graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}}} });
 
+  // Comparativo contra Meta 100% (SEM % - inalterado)
   destruir('meta100');
   var area = document.getElementById('chartMeta100Area');
   if (!area) return;
@@ -404,6 +444,7 @@ function renderizarGraficos(vends) {
     area.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
   }
 
+  // Percentual de Atingimento (SEM % extra - já tem o próprio gráfico)
   destruir('pctMeta100');
   var canvasPct = document.getElementById('chartPctMeta100');
   if (!canvasPct) return;
