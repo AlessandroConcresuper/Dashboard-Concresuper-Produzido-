@@ -55,14 +55,7 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 .erro-box b{color:#FF5C5C}
 .toast{position:fixed;bottom:20px;right:20px;background:#F5B400;color:#000;padding:12px 20px;border-radius:8px;font-weight:700;font-size:13px;display:none;z-index:1000}
 .empty-state{text-align:center;padding:80px 20px;color:#8CA0B3}
-.checkpoint-table{width:100%;border-collapse:collapse;margin-top:15px}
-.checkpoint-table th{text-align:center;font-size:10px;color:#8CA0B3;text-transform:uppercase;padding:10px 6px;border-bottom:2px solid rgba(255,255,255,.1);font-weight:700;background:#0E1A29}
-.checkpoint-table td{text-align:center;padding:12px 6px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
-.checkpoint-table .vend-nome{text-align:left;font-weight:700;font-size:13px;white-space:nowrap}
-.chk-status{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:12px}
-.chk-val{font-size:10px;color:#8CA0B3;display:block;margin-top:2px}
-.chk-deadline{font-size:9px;color:#6B7F94;display:block}
-@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.charts-grid{grid-template-columns:1fr}.checkpoint-table{font-size:11px}.checkpoint-table td,.checkpoint-table th{padding:8px 4px}}
+@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.charts-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.kpi-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -112,12 +105,6 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <div class="panel chart-full"><div class="panel-title">% Atingido contra a Meta 100% Individual</div><div class="chart-area"><canvas id="chartPctMeta100"></canvas></div></div>
 </div>
 
-<div class="section-title">Checkpoints de Comissionamento <span class="badge">💰</span></div>
-<div class="panel" style="padding:15px;overflow-x:auto">
-<div id="checkpointInfo" style="font-size:12px;color:#8CA0B3;margin-bottom:12px"></div>
-<div id="checkpointContainer"></div>
-</div>
-
 <div class="section-title">Análise de Desempenho</div>
 <div class="charts-grid">
 <div class="panel"><div class="panel-title">Ranking por Volume Produzido</div><div class="chart-area"><canvas id="chartRank"></canvas></div></div>
@@ -142,7 +129,7 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 
 <script>
 var CAMINHO = 'dados.xlsx';
-var dados = [], filtrados = [], metas100 = {}, graf = {}, checkpointsPlanilha = [];
+var dados = [], filtrados = [], metas100 = {}, graf = {};
 
 function parseNum(v) {
   if (v == null || v === '') return 0;
@@ -178,36 +165,6 @@ function toast(m) {
 }
 
 function processar(registros) {
-  // Lê os checkpoints da planilha (colunas M-N) - suporta valores formatados e crus
-  checkpointsPlanilha = [];
-  for (var i = 0; i < registros.length; i++) {
-    var row = registros[i];
-    var colM = String(row[12] || '').trim();
-    var colN = row[13];
-    
-    // Tenta match com string tipo "25%" ou número tipo 0.25
-    var pctCheck = null;
-    if (colM.match(/^(25%|50%|75%|100%)$/)) {
-      pctCheck = parseInt(colM) / 100;
-    } else {
-      var num = parseNum(colM);
-      if (num === 0.25 || num === 0.50 || num === 0.75 || num === 1.00) {
-        pctCheck = num;
-      }
-    }
-    
-    if (pctCheck !== null) {
-      var dt = parseData(colN);
-      if (dt) {
-        var rotulo = Math.round(pctCheck * 100) + '%';
-        checkpointsPlanilha.push({ chave: rotulo, pct: pctCheck, data: dt });
-      }
-    }
-  }
-  var ordem = {'25%':1,'50%':2,'75%':3,'100%':4};
-  checkpointsPlanilha.sort(function(a,b){return (ordem[a.chave]||99) - (ordem[b.chave]||99);});
-
-  // Lê metas 100% (colunas J-K)
   metas100 = {};
   for (var i = 0; i < registros.length; i++) {
     var row = registros[i];
@@ -219,9 +176,6 @@ function processar(registros) {
       if (meta > 0) metas100[vendedor] = meta;
     }
   }
-
-  // Lê dados principais (colunas A-F)
-  dados = [];
   for (var i = 1; i < registros.length; i++) {
     var row = registros[i];
     var vendedor = String(row[2] || '').trim();
@@ -256,7 +210,7 @@ function processar(registros) {
   preencherFiltros();
   aplicarFiltros();
   var qtdMeta = Object.keys(metas100).length;
-  toast(dados.length + ' registros carregados' + (qtdMeta > 0 ? ' · ' + qtdMeta + ' metas individuais' : '') + (checkpointsPlanilha.length > 0 ? ' · ' + checkpointsPlanilha.length + ' checkpoints' : ''));
+  toast(dados.length + ' registros carregados' + (qtdMeta > 0 ? ' · ' + qtdMeta + ' metas individuais' : ''));
 }
 
 async function carregarDados() {
@@ -267,7 +221,6 @@ async function carregarDados() {
     var r = await fetch(url, { cache: 'no-store' });
     if (!r.ok) throw new Error('Arquivo dados.xlsx não encontrado (HTTP ' + r.status + ').');
     var buffer = await r.arrayBuffer();
-    // SEM raw:true para preservar formatação de porcentagem e datas
     var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
     var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
     processar(dadosBrutos);
@@ -291,13 +244,20 @@ function preencherFiltros() {
 
 function aplicarFiltros() {
   var f = { mes: document.getElementById('fMes').value, dia: document.getElementById('fDia').value, filial: document.getElementById('fFilial').value, cidade: document.getElementById('fCidade').value, vendedor: document.getElementById('fVendedor').value };
+  
+  // Filtro principal para KPIs, gráficos e tabelas
   filtrados = dados.filter(function(r) {
-    return (f.mes === 'all' || r.mes === f.mes) && (f.dia === 'all' || r.dia === f.dia) && (f.filial === 'all' || r.filial === f.filial) && (f.cidade === 'all' || r.cidade === f.cidade) && (f.vendedor === 'all' || r.vendedor === f.vendedor);
+    return (f.mes === 'all' || r.mes === f.mes) && 
+           (f.dia === 'all' || r.dia === f.dia) && 
+           (f.filial === 'all' || r.filial === f.filial) && 
+           (f.cidade === 'all' || r.cidade === f.cidade) && 
+           (f.vendedor === 'all' || r.vendedor === f.vendedor);
   });
-  renderizar();
+  
+  renderizar(f, filtrados);
 }
 
-function renderizar() {
+function renderizar(f, filtrados) {
   if (!filtrados.length) { ['kpiMeta','kpiProd','kpiPerc','kpiTop','kpiDias'].forEach(function(id){document.getElementById(id).textContent='—';}); return; }
   var tMeta = filtrados.reduce(function(s,r){return s+r.meta;}, 0);
   var tProd = filtrados.reduce(function(s,r){return s+r.produzido;}, 0);
@@ -311,126 +271,53 @@ function renderizar() {
   filtrados.forEach(function(r) { if (!agrupado[r.vendedor]) agrupado[r.vendedor] = { prod: 0, meta: 0 }; agrupado[r.vendedor].prod += r.produzido; agrupado[r.vendedor].meta += r.meta; });
   var vends = Object.keys(agrupado).map(function(n) { return { nome: n, prod: agrupado[n].prod, meta: agrupado[n].meta, pct: agrupado[n].meta > 0 ? (agrupado[n].prod / agrupado[n].meta * 100) : 0, meta100: metas100[n.toLowerCase().trim()] || 0 }; }).sort(function(a,b) { return b.prod - a.prod; });
   document.getElementById('kpiTop').textContent = vends.length ? vends[0].nome + ' (' + vends[0].pct.toFixed(1).replace('.',',') + '%)' : '—';
-  renderizarCheckpoints(vends);
-  renderizarGraficos(vends);
+  
+  // Dados para evolução diária (SEMPRE usa o mês selecionado, mas IGNORA o filtro de dia)
+  var dadosEvolucao = dados;
+  if (f.mes !== 'all') {
+    dadosEvolucao = dados.filter(function(r) { return r.mes === f.mes; });
+  }
+  
+  renderizarGraficos(vends, f, dadosEvolucao);
   renderizarProgresso(vends);
   renderizarRanking(vends);
 }
 
-function renderizarCheckpoints(vends) {
-  var container = document.getElementById('checkpointContainer');
-  var info = document.getElementById('checkpointInfo');
-  var meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  var agora = new Date();
-  var mesNome = meses[agora.getMonth()];
-  
-  if (checkpointsPlanilha.length === 0) {
-    info.innerHTML = 'Nenhum checkpoint configurado. Adicione na planilha as colunas <b>Checkpoint</b> e <b>Data limite</b> com valores 25%, 50%, 75%, 100%.';
-    container.innerHTML = '';
-    return;
-  }
-  
-  info.innerHTML = 'Metas referentes a <b>' + mesNome + '/' + agora.getFullYear() + '</b> · As datas limite são lidas diretamente da sua planilha (colunas M-N).';
-  
-  var temMeta100 = vends.some(function(v){return v.meta100 > 0;});
-  if (!temMeta100) {
-    container.innerHTML = '<div class="empty-state"><p style="font-size:30px;margin-bottom:5px">📋</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:12px;margin-top:3px">para visualizar os checkpoints de comissionamento</p></div>';
-    return;
-  }
-  
-  var html = '<table class="checkpoint-table"><thead><tr><th style="text-align:left;min-width:100px">Vendedor</th><th>Produzido</th>';
-  checkpointsPlanilha.forEach(function(cp) {
-    html += '<th>' + cp.chave + '<br><span style="font-weight:400;font-size:9px">até ' + cp.data.toLocaleDateString('pt-BR') + '</span></th>';
-  });
-  html += '</tr></thead><tbody>';
-  
-  var hoje = new Date();
-  hoje.setHours(23, 59, 59, 0);
-  
-  vends.forEach(function(v) {
-    if (!v.meta100) return;
-    html += '<tr><td class="vend-nome">' + v.nome + '</td>';
-    html += '<td style="font-weight:700;color:#F5B400">' + fmtNum(v.prod) + ' m³</td>';
-    
-    checkpointsPlanilha.forEach(function(cp) {
-      var valor = v.meta100 * cp.pct;
-      var atingiu = v.prod >= valor;
-      var noPrazo = hoje <= cp.data;
-      
-      var icon, cor, texto;
-      if (atingiu && noPrazo) { icon = '✅'; cor = '#2ECC71'; texto = 'Comissão garantida'; }
-      else if (atingiu && !noPrazo) { icon = '⚠️'; cor = '#F5B400'; texto = 'Atingiu, prazo expirado'; }
-      else if (!atingiu && noPrazo) { icon = '⏳'; cor = '#5B9FFF'; texto = 'Em andamento'; }
-      else { icon = '❌'; cor = '#FF5C5C'; texto = 'Prazo expirado'; }
-      
-      html += '<td>';
-      html += '<span class="chk-status" style="color:' + cor + '">' + icon + ' ' + valor.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' m³</span>';
-      html += '<span class="chk-val">' + texto + '</span>';
-      html += '<span class="chk-deadline">Limite: ' + cp.data.toLocaleDateString('pt-BR') + '</span>';
-      html += '</td>';
-    });
-    
-    html += '</tr>';
-  });
-  
-  html += '</tbody></table>';
-  container.innerHTML = html;
-}
-
 function destruir(k) { if (graf[k]) { try { graf[k].destroy(); } catch(e) {} delete graf[k]; } }
 
-function renderizarGraficos(vends) {
+function renderizarGraficos(vends, f, dadosEvolucao) {
   Chart.defaults.color = '#8CA0B3'; Chart.defaults.font.family = 'Inter';
   var grid = { color: 'rgba(255,255,255,.05)' }, nomes = vends.map(function(v){return v.nome;}), prods = vends.map(function(v){return v.prod;}), metas = vends.map(function(v){return v.meta;});
   var cores = vends.map(function(v){return v.pct >= 100 ? '#2ECC71' : '#F5B400';});
 
-  // Plugin para mostrar % nas barras (usado nos gráficos que o usuário pediu)
-  function criarPluginPct(vends, dataKey) {
-    return {
-      id: 'pctLabels',
-      afterDraw: function(chart) {
-        var ctx = chart.ctx;
-        chart.data.datasets.forEach(function(dataset, i) {
-          if (dataset.label === 'Meta 100% Personalizada' || dataset.label === '% Atingido') return;
-          var meta = chart.getDatasetMeta(i);
-          meta.data.forEach(function(bar, index) {
-            var pct = vends[index] ? vends[index].pct : 0;
-            if (pct <= 0) return;
-            var valor = pct.toFixed(1).replace('.', ',') + '%';
-            ctx.fillStyle = pct >= 100 ? '#2ECC71' : '#F5B400';
-            ctx.font = 'bold 11px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(valor, bar.x, bar.y - 6);
-          });
-        });
-      }
-    };
-  }
-
-  // Ranking por Volume Produzido (com %)
   destruir('rank');
-  var pluginRank = criarPluginPct(vends);
-  Chart.register(pluginRank);
-  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}}, plugins:[pluginRank] });
-
-  // Comparativo: Meta vs Realizado (com %)
+  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}} });
+  
   destruir('metaProd');
-  var pluginMetaProd = criarPluginPct(vends);
-  Chart.register(pluginMetaProd);
-  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}}, plugins:[pluginMetaProd] });
-
-  // Evolução Diária (sem %)
+  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}} });
+  
+  // EVOLUÇÃO DIÁRIA - usa dadosEvolucao (sempre do mês, ignorando filtro de dia)
   destruir('evo');
-  var evo = {}; filtrados.forEach(function(r){var k=r.dia; if (k !== 'N/A') evo[k] = (evo[k]||0) + r.produzido; });
-  var labs = Object.keys(evo).sort(function(a,b){var ma=a.match(/(\d{2})\/(\d{2})\/(\d{4})/),mb=b.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(ma&&mb) return new Date(ma[3],ma[2]-1,ma[1])-new Date(mb[3],mb[2]-1,mb[1]); return a.localeCompare(b); });
-  if (labs.length > 0) { graf.evo = new Chart(document.getElementById('chartEvo'), { type:'line', data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}} }); }
-
-  // Participação (sem %, é doughnut)
+  var evo = {};
+  dadosEvolucao.forEach(function(r){var k=r.dia; if (k !== 'N/A') evo[k] = (evo[k]||0) + r.produzido; });
+  var labs = Object.keys(evo).sort(function(a,b){
+    var ma = a.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    var mb = b.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (ma && mb) return new Date(ma[3],ma[2]-1,ma[1]) - new Date(mb[3],mb[2]-1,mb[1]);
+    return a.localeCompare(b);
+  });
+  if (labs.length > 0) {
+    graf.evo = new Chart(document.getElementById('chartEvo'), {
+      type:'line',
+      data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#F5B400'}]},
+      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}}
+    });
+  }
+  
   destruir('part');
   var paleta = ['#F5B400','#4C8DFF','#2ECC71','#FF6B6B','#B084F5','#4FD1C5','#F783AC','#F0A868','#63C7FF','#E4C441'];
   graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}}} });
 
-  // Comparativo contra Meta 100% (SEM % - inalterado)
   destruir('meta100');
   var area = document.getElementById('chartMeta100Area');
   if (!area) return;
@@ -444,7 +331,6 @@ function renderizarGraficos(vends) {
     area.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
   }
 
-  // Percentual de Atingimento (SEM % extra - já tem o próprio gráfico)
   destruir('pctMeta100');
   var canvasPct = document.getElementById('chartPctMeta100');
   if (!canvasPct) return;
