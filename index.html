@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
@@ -124,8 +123,6 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <div class="toast" id="toast">Carregando...</div>
 
 <script>
-Chart.register(ChartDataLabels);
-
 var CAMINHO = 'dados.xlsx';
 var dados = [], filtrados = [], metas100 = {}, graf = {};
 
@@ -269,18 +266,18 @@ function renderizarGraficos(vends) {
   var grid = { color: 'rgba(255,255,255,.05)' }, nomes = vends.map(function(v){return v.nome;}), prods = vends.map(function(v){return v.prod;}), metas = vends.map(function(v){return v.meta;});
   var cores = vends.map(function(v){return v.pct >= 100 ? '#2ECC71' : '#F5B400';});
   destruir('rank');
-  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, datalabels:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}} });
+  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}} });
   destruir('metaProd');
-  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}, datalabels:{display:false}}, scales:{y:{grid:grid}}} });
+  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}} });
   destruir('evo');
   var evo = {}; filtrados.forEach(function(r){var k=r.dia; if (k !== 'N/A') evo[k] = (evo[k]||0) + r.produzido; });
   var labs = Object.keys(evo).sort(function(a,b){var ma=a.match(/(\d{2})\/(\d{2})\/(\d{4})/),mb=b.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(ma&&mb) return new Date(ma[3],ma[2]-1,ma[1])-new Date(mb[3],mb[2]-1,mb[1]); return a.localeCompare(b); });
-  if (labs.length > 0) { graf.evo = new Chart(document.getElementById('chartEvo'), { type:'line', data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, datalabels:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}} }); }
+  if (labs.length > 0) { graf.evo = new Chart(document.getElementById('chartEvo'), { type:'line', data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}} }); }
   destruir('part');
   var paleta = ['#F5B400','#4C8DFF','#2ECC71','#FF6B6B','#B084F5','#4FD1C5','#F783AC','#F0A868','#63C7FF','#E4C441'];
-  graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}, datalabels:{display:false}}}} });
+  graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}}} });
 
-  // NOVO GRAFICO: Meta 100% vs Produzido COM PERCENTUAL NAS BARRAS
+  // NOVO GRAFICO: Meta 100% vs Produzido - SEM plugin externo
   destruir('meta100');
   var area = document.getElementById('chartMeta100Area');
   if (!area) return;
@@ -289,41 +286,46 @@ function renderizarGraficos(vends) {
     var canvas = document.getElementById('chartMeta100');
     if (!canvas) { area.innerHTML = '<canvas id="chartMeta100"></canvas>'; canvas = document.getElementById('chartMeta100'); }
     var cores100 = vends.map(function(v) { return v.meta100 > 0 ? (v.prod >= v.meta100 ? '#2ECC71' : '#F5B400') : 'rgba(255,255,255,.1)'; });
-    // Calcula percentual de cada vendedor contra a Meta 100%
-    var pctsMeta100 = vends.map(function(v) {
-      return v.meta100 > 0 ? (v.prod / v.meta100 * 100) : 0;
-    });
+    var pctsMeta100 = vends.map(function(v) { return v.meta100 > 0 ? (v.prod / v.meta100 * 100) : 0; });
+    
+    // Plugin customizado para mostrar % nas barras (sem dependência externa)
+    var labelPlugin = {
+      id: 'labelPercent',
+      afterDraw: function(chart) {
+        var ctx = chart.ctx;
+        chart.data.datasets.forEach(function(dataset, i) {
+          if (dataset.label === 'Volume Produzido') {
+            var meta = chart.getDatasetMeta(i);
+            meta.data.forEach(function(bar, index) {
+              var pct = pctsMeta100[index];
+              if (pct > 0) {
+                var valor = pct.toFixed(1).replace('.', ',') + '%';
+                ctx.fillStyle = pct >= 100 ? '#2ECC71' : '#F5B400';
+                ctx.font = 'bold 13px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(valor, bar.x, bar.y - 8);
+              }
+            });
+          }
+        });
+      }
+    };
+    
+    Chart.register(labelPlugin);
+    
     graf.meta100 = new Chart(canvas, {
       type: 'bar',
       data: { labels: nomes, datasets: [
-        { label: 'Meta 100% Personalizada', data: vends.map(function(v){return v.meta100;}), backgroundColor: 'rgba(255,255,255,.15)', borderRadius: 5, datalabels: { display: false } },
+        { label: 'Meta 100% Personalizada', data: vends.map(function(v){return v.meta100;}), backgroundColor: 'rgba(255,255,255,.15)', borderRadius: 5 },
         { label: 'Volume Produzido', data: prods, backgroundColor: cores100, borderRadius: 5 }
       ]},
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'top', labels: { color: '#fff' } },
-          datalabels: {
-            display: true,
-            anchor: 'end',
-            align: 'top',
-            color: function(ctx) {
-              var idx = ctx.dataIndex;
-              var pct = pctsMeta100[idx];
-              return pct >= 100 ? '#2ECC71' : '#F5B400';
-            },
-            font: { weight: 'bold', size: 13 },
-            formatter: function(value, ctx) {
-              var idx = ctx.dataIndex;
-              var pct = pctsMeta100[idx];
-              return pct.toFixed(1).replace('.', ',') + '%';
-            },
-            offset: 4
-          }
-        },
+        plugins: { legend: { position: 'top', labels: { color: '#fff' } } },
         scales: { y: { grid: grid, beginAtZero: true } }
-      }
+      },
+      plugins: [labelPlugin]
     });
   } else {
     area.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
