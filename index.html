@@ -25,6 +25,8 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 .filter-group{display:flex;flex-direction:column;gap:5px;flex:1;min-width:140px}
 .filter-group label{font-size:10px;text-transform:uppercase;font-weight:700;color:#8CA0B3;letter-spacing:.5px}
 .filter-group select{background:#0E1A29;border:1px solid rgba(255,255,255,.07);color:#fff;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;outline:none}
+.info-banner{background:#0D2137;border:1px solid #1A4975;border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#B8D4F0;display:flex;align-items:center;gap:10px;line-height:1.5}
+.info-banner b{color:#fff}
 .kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:15px;margin-bottom:20px}
 .kpi-card{background:#111F30;border:1px solid rgba(255,255,255,.07);padding:20px;border-radius:15px}
 .kpi-label{font-size:12px;color:#8CA0B3;font-weight:500}
@@ -77,9 +79,14 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 </div>
 </div>
 
+<div class="info-banner">
+<span style="font-size:18px">💡</span>
+<span>Use os filtros acima para visualizar os dados por <b>Mês</b>, <b>Dia</b>, <b>Filial</b>, <b>Cidade</b> ou <b>Vendedor</b>. Deixe em <b>"Todos"</b> para ver os dados completos.</span>
+</div>
+
 <div class="filters">
 <div class="filter-group"><label>Mês</label><select id="fMes" onchange="aplicarFiltros()"><option value="all">Todos os Meses</option></select></div>
-<div class="filter-group"><label>Dia</label><select id="fDia" onchange="aplicarFiltros()"><option value="all">Todos os Dias</option></select></div>
+<div class="filter-group"><label>Dia</label><select id="fDia" onchange="aplicarFiltros()"></select></div>
 <div class="filter-group"><label>Filial</label><select id="fFilial" onchange="aplicarFiltros()"><option value="all">Todas as Filiais</option></select></div>
 <div class="filter-group"><label>Cidade</label><select id="fCidade" onchange="aplicarFiltros()"><option value="all">Todas as Cidades</option></select></div>
 <div class="filter-group"><label>Vendedor</label><select id="fVendedor" onchange="aplicarFiltros()"><option value="all">Todos os Vendedores</option></select></div>
@@ -145,7 +152,7 @@ function parseData(v) {
   var s = String(v).trim(), p = s.split('/');
   if (p.length === 3) {
     var a = parseInt(p[0]), b = parseInt(p[1]), c = parseInt(p[2]);
-    if (c < 100) c += 2000;
+    if (c &lt; 100) c += 2000;
     if (a > 12) return new Date(c, b-1, a, 12, 0, 0);
     if (b > 12) return new Date(c, a-1, b, 12, 0, 0);
     return new Date(c, a-1, b, 12, 0, 0);
@@ -166,7 +173,7 @@ function toast(m) {
 
 function processar(registros) {
   metas100 = {};
-  for (var i = 0; i < registros.length; i++) {
+  for (var i = 0; i &lt; registros.length; i++) {
     var row = registros[i];
     var colJ = String(row[9] || '').trim();
     var colK = String(row[10] || '').trim();
@@ -176,22 +183,21 @@ function processar(registros) {
       if (meta > 0) metas100[vendedor] = meta;
     }
   }
-  for (var i = 1; i < registros.length; i++) {
+  dados = [];
+  for (var i = 1; i &lt; registros.length; i++) {
     var row = registros[i];
+    var cidade = String(row[0] || '').trim();
+    if (!cidade || cidade.match(/^(cidade|total|meta|)$/i)) continue;
     var vendedor = String(row[2] || '').trim();
     var produzido = parseNum(row[3]);
     var meta = parseNum(row[4]);
     var dataRaw = row[5];
     if (!vendedor || vendedor.match(/^(cidade|vendedor|total|meta|)$/i)) continue;
-    var colH = String(row[7] || '').trim();
-    if (colH.match(/meta\s*100/i)) continue;
-    var colJ = String(row[9] || '').trim();
-    if (colJ && colJ !== 'Vendedor' && colJ !== 'Cidade' && produzido === 0) continue;
     if (isNaN(produzido) || produzido === 0) continue;
     if (isNaN(meta) || meta === 0) continue;
     var dt = parseData(dataRaw);
     dados.push({
-      cidade: String(row[0]||'').trim(),
+      cidade: cidade,
       filial: String(row[1]||'').trim(),
       vendedor: vendedor,
       produzido: produzido,
@@ -214,6 +220,10 @@ function processar(registros) {
 }
 
 async function carregarDados() {
+  dados = [];
+  filtrados = [];
+  metas100 = {};
+  Object.keys(graf).forEach(function(k) { destruir(k); });
   toast('Carregando dados...');
   document.getElementById('erroMsg').style.display = 'none';
   try {
@@ -234,30 +244,40 @@ async function carregarDados() {
 
 function preencherFiltros() {
   var uniq = function(arr) { var o = {}; arr.forEach(function(v) { if (v && v !== 'N/A') o[v] = 1; }); return Object.keys(o).sort(function(a,b) { return a.localeCompare(b, 'pt-BR'); }); };
-  var setar = function(id, vals) { var el = document.getElementById(id); el.innerHTML = '<option value="all">Todos</option>'; vals.forEach(function(v) { var o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); }); };
+  var setar = function(id, vals, temAll) {
+    var el = document.getElementById(id);
+    el.innerHTML = '';
+    if (temAll !== false) el.innerHTML = '<option value="all">' + (id === 'fDia' ? 'Todos os Dias' : 'Todos') + '</option>';
+    vals.forEach(function(v) { var o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); });
+  };
   setar('fMes', uniq(dados.map(function(r){return r.mes;})));
-  setar('fDia', uniq(dados.map(function(r){return r.dia;})));
+  setar('fDia', uniq(dados.map(function(r){return r.dia;})), false); // SEM "Todos os Dias"
   setar('fFilial', uniq(dados.map(function(r){return r.filial;})));
   setar('fCidade', uniq(dados.map(function(r){return r.cidade;})));
   setar('fVendedor', uniq(dados.map(function(r){return r.vendedor;})));
 }
 
 function aplicarFiltros() {
-  var f = { mes: document.getElementById('fMes').value, dia: document.getElementById('fDia').value, filial: document.getElementById('fFilial').value, cidade: document.getElementById('fCidade').value, vendedor: document.getElementById('fVendedor').value };
+  var f = {
+    mes: document.getElementById('fMes').value,
+    dia: document.getElementById('fDia').value,
+    filial: document.getElementById('fFilial').value,
+    cidade: document.getElementById('fCidade').value,
+    vendedor: document.getElementById('fVendedor').value
+  };
   
-  // Filtro principal para KPIs, gráficos e tabelas
   filtrados = dados.filter(function(r) {
     return (f.mes === 'all' || r.mes === f.mes) && 
-           (f.dia === 'all' || r.dia === f.dia) && 
+           (r.dia === f.dia) && 
            (f.filial === 'all' || r.filial === f.filial) && 
            (f.cidade === 'all' || r.cidade === f.cidade) && 
            (f.vendedor === 'all' || r.vendedor === f.vendedor);
   });
   
-  renderizar(f, filtrados);
+  renderizar(f);
 }
 
-function renderizar(f, filtrados) {
+function renderizar(f) {
   if (!filtrados.length) { ['kpiMeta','kpiProd','kpiPerc','kpiTop','kpiDias'].forEach(function(id){document.getElementById(id).textContent='—';}); return; }
   var tMeta = filtrados.reduce(function(s,r){return s+r.meta;}, 0);
   var tProd = filtrados.reduce(function(s,r){return s+r.produzido;}, 0);
@@ -272,20 +292,20 @@ function renderizar(f, filtrados) {
   var vends = Object.keys(agrupado).map(function(n) { return { nome: n, prod: agrupado[n].prod, meta: agrupado[n].meta, pct: agrupado[n].meta > 0 ? (agrupado[n].prod / agrupado[n].meta * 100) : 0, meta100: metas100[n.toLowerCase().trim()] || 0 }; }).sort(function(a,b) { return b.prod - a.prod; });
   document.getElementById('kpiTop').textContent = vends.length ? vends[0].nome + ' (' + vends[0].pct.toFixed(1).replace('.',',') + '%)' : '—';
   
-  // Dados para evolução diária (SEMPRE usa o mês selecionado, mas IGNORA o filtro de dia)
+  // Evolução diária: sempre mostra todos os dias do mês (ignora filtro de dia)
   var dadosEvolucao = dados;
   if (f.mes !== 'all') {
     dadosEvolucao = dados.filter(function(r) { return r.mes === f.mes; });
   }
   
-  renderizarGraficos(vends, f, dadosEvolucao);
+  renderizarGraficos(vends, dadosEvolucao);
   renderizarProgresso(vends);
   renderizarRanking(vends);
 }
 
 function destruir(k) { if (graf[k]) { try { graf[k].destroy(); } catch(e) {} delete graf[k]; } }
 
-function renderizarGraficos(vends, f, dadosEvolucao) {
+function renderizarGraficos(vends, dadosEvolucao) {
   Chart.defaults.color = '#8CA0B3'; Chart.defaults.font.family = 'Inter';
   var grid = { color: 'rgba(255,255,255,.05)' }, nomes = vends.map(function(v){return v.nome;}), prods = vends.map(function(v){return v.prod;}), metas = vends.map(function(v){return v.meta;});
   var cores = vends.map(function(v){return v.pct >= 100 ? '#2ECC71' : '#F5B400';});
@@ -296,22 +316,16 @@ function renderizarGraficos(vends, f, dadosEvolucao) {
   destruir('metaProd');
   graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}} });
   
-  // EVOLUÇÃO DIÁRIA - usa dadosEvolucao (sempre do mês, ignorando filtro de dia)
   destruir('evo');
   var evo = {};
   dadosEvolucao.forEach(function(r){var k=r.dia; if (k !== 'N/A') evo[k] = (evo[k]||0) + r.produzido; });
   var labs = Object.keys(evo).sort(function(a,b){
-    var ma = a.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    var mb = b.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (ma && mb) return new Date(ma[3],ma[2]-1,ma[1]) - new Date(mb[3],mb[2]-1,mb[1]);
+    var ma=a.match(/(\d{2})\/(\d{2})\/(\d{4})/),mb=b.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if(ma&&mb) return new Date(ma[3],ma[2]-1,ma[1])-new Date(mb[3],mb[2]-1,mb[1]);
     return a.localeCompare(b);
   });
   if (labs.length > 0) {
-    graf.evo = new Chart(document.getElementById('chartEvo'), {
-      type:'line',
-      data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#F5B400'}]},
-      options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}}
-    });
+    graf.evo = new Chart(document.getElementById('chartEvo'), { type:'line', data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#F5B400'}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}}});
   }
   
   destruir('part');
