@@ -172,7 +172,8 @@ function toast(m) {
 }
 
 function processar(registros) {
-  // Lê metas 100% (colunas J-K)
+  console.log('Total de linhas na planilha:', registros.length);
+  
   metas100 = {};
   for (var i = 0; i < registros.length; i++) {
     var row = registros[i];
@@ -184,13 +185,12 @@ function processar(registros) {
       if (meta > 0) metas100[vendedor] = meta;
     }
   }
+  console.log('Metas 100% lidas:', Object.keys(metas100).length);
 
-  // Lê dados principais (colunas A-F)
   dados = [];
   for (var i = 1; i < registros.length; i++) {
     var row = registros[i];
     
-    // Pula linhas das tabelas secundárias (Meta 100%, Checkpoints)
     var cidade = String(row[0] || '').trim();
     if (!cidade || cidade.match(/^(cidade|total|meta|)$/i)) continue;
     
@@ -218,8 +218,10 @@ function processar(registros) {
     });
   }
 
+  console.log('Registros de dados lidos:', dados.length);
+  
   if (dados.length === 0) {
-    document.getElementById('erroTexto').innerHTML = 'Nenhum registro encontrado. Verifique se a planilha tem as colunas: Cidade, Filial, Vendedor, Produzido, Meta, Data.';
+    document.getElementById('erroTexto').innerHTML = 'Nenhum registro encontrado. Verifique se a planilha tem as colunas: Cidade (col A), Filial (col B), Vendedor (col C), Produzido (col D), Meta (col E), Data (col F).';
     document.getElementById('erroMsg').style.display = 'block';
     return;
   }
@@ -233,7 +235,6 @@ function processar(registros) {
 }
 
 async function carregarDados() {
-  // Limpa estado anterior
   dados = [];
   filtrados = [];
   metas100 = {};
@@ -242,26 +243,32 @@ async function carregarDados() {
   toast('Carregando dados...');
   document.getElementById('erroMsg').style.display = 'none';
   try {
-    var url = CAMINHO + '?_=' + Date.now();
-    var r = await fetch(url, { cache: 'no-store' });
-    if (!r.ok) {
-      // Tenta com caminho alternativo (para GitHub Pages)
-      var url2 = './dados.xlsx?_=' + Date.now();
-      var r2 = await fetch(url2, { cache: 'no-store' });
-      if (!r2.ok) throw new Error('Arquivo dados.xlsx não encontrado.');
-      var buffer = await r2.arrayBuffer();
-      var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
-      var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
-      processar(dadosBrutos);
-      return;
+    // Tenta múltiplos caminhos para o arquivo
+    var caminhos = [CAMINHO, './dados.xlsx', 'dados.xlsx'];
+    var buffer = null;
+    
+    for (var c = 0; c < caminhos.length; c++) {
+      try {
+        var url = caminhos[c] + '?_=' + Date.now();
+        var r = await fetch(url, { cache: 'no-store' });
+        if (r.ok) {
+          buffer = await r.arrayBuffer();
+          console.log('Arquivo encontrado em:', caminhos[c]);
+          break;
+        }
+      } catch(e) {
+        console.log('Falha no caminho', caminhos[c], e);
+      }
     }
-    var buffer = await r.arrayBuffer();
+    
+    if (!buffer) throw new Error('Arquivo dados.xlsx não encontrado em nenhum caminho.');
+    
     var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
     var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
     processar(dadosBrutos);
   } catch(e) {
     console.error(e);
-    document.getElementById('erroTexto').innerHTML = e.message + '<br><br><b>Para atualizar os dados:</b><br>1. No Google Sheets, clique em <b>Arquivo &gt; Baixar &gt; Microsoft Excel (.xlsx)</b><br>2. Mantenha a coluna extra <b>Meta 100%</b> com as metas individuais<br>3. Renomeie para <b>dados.xlsx</b> e faça upload no seu repositório<br>4. Clique em <b>Atualizar</b> aqui no dashboard';
+    document.getElementById('erroTexto').innerHTML = e.message + '<br><br><b>Para atualizar os dados:</b><br>1. No Google Sheets, clique em <b>Arquivo &gt; Baixar &gt; Microsoft Excel (.xlsx)</b><br>2. Mantenha as colunas: Cidade, Filial, Vendedor, Produzido, Meta, Data<br>3. Adicione a coluna <b>Meta 100%</b> com os valores individuais<br>4. Renomeie para <b>dados.xlsx</b> e faça upload no seu repositório (mesma pasta do index.html)<br>5. Clique em <b>Atualizar</b> aqui no dashboard';
     document.getElementById('erroMsg').style.display = 'block';
     toast('Erro ao carregar');
   }
@@ -276,7 +283,7 @@ function preencherFiltros() {
     vals.forEach(function(v) { var o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); });
   };
   setar('fMes', uniq(dados.map(function(r){return r.mes;})));
-  setar('fDia', uniq(dados.map(function(r){return r.dia;})), false); // SEM "Todos os Dias"
+  setar('fDia', uniq(dados.map(function(r){return r.dia;})), false);
   setar('fFilial', uniq(dados.map(function(r){return r.filial;})));
   setar('fCidade', uniq(dados.map(function(r){return r.cidade;})));
   setar('fVendedor', uniq(dados.map(function(r){return r.vendedor;})));
@@ -291,7 +298,6 @@ function aplicarFiltros() {
     vendedor: document.getElementById('fVendedor').value
   };
   
-  // Se o Dia não tem "Todos", filtra pelo dia selecionado
   filtrados = dados.filter(function(r) {
     return (f.mes === 'all' || r.mes === f.mes) && 
            (r.dia === f.dia) && 
@@ -322,7 +328,6 @@ function renderizar(f) {
   var vends = Object.keys(agrupado).map(function(n) { return { nome: n, prod: agrupado[n].prod, meta: agrupado[n].meta, pct: agrupado[n].meta > 0 ? (agrupado[n].prod / agrupado[n].meta * 100) : 0, meta100: metas100[n.toLowerCase().trim()] || 0 }; }).sort(function(a,b) { return b.prod - a.prod; });
   document.getElementById('kpiTop').textContent = vends.length ? vends[0].nome + ' (' + vends[0].pct.toFixed(1).replace('.',',') + '%)' : '—';
   
-  // Evolução diária: usa sempre o mês selecionado (ignora filtro de dia)
   var dadosEvolucao = dados;
   if (f && f.mes !== 'all') {
     dadosEvolucao = dados.filter(function(r) { return r.mes === f.mes; });
