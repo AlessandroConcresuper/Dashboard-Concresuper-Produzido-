@@ -22,7 +22,7 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 .btn{background:#F5B400;color:#1A1200;border:none;padding:9px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;transition:.2s}
 .btn:hover{background:#FFC72E}
 .filters{display:flex;gap:12px;flex-wrap:wrap;background:#111F30;padding:15px;border-radius:12px;border:1px solid rgba(255,255,255,.07);margin-bottom:20px}
-.filter-group{display:flex;flex-direction:column;gap:5px;flex:1;min-width:140px}
+.filter-group{display:flex;flex-direction:column;gap:5px;flex:1;min-width:150px}
 .filter-group label{font-size:10px;text-transform:uppercase;font-weight:700;color:#8CA0B3;letter-spacing:.5px}
 .filter-group select{background:#0E1A29;border:1px solid rgba(255,255,255,.07);color:#fff;padding:10px;border-radius:8px;font-size:13px;cursor:pointer;outline:none}
 .info-banner{background:#0D2137;border:1px solid #1A4975;border-radius:10px;padding:12px 18px;margin-bottom:20px;font-size:13px;color:#B8D4F0;display:flex;align-items:center;gap:10px;line-height:1.5}
@@ -81,7 +81,7 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 
 <div class="info-banner">
 <span style="font-size:18px">💡</span>
-<span>Use os filtros acima para visualizar os dados por <b>Mês</b>, <b>Dia</b>, <b>Filial</b>, <b>Cidade</b> ou <b>Vendedor</b>. Deixe em <b>"Todos"</b> para ver os dados completos.</span>
+<span>Use os filtros abaixo para visualizar os dados por <b>Mês</b>, <b>Dia</b>, <b>Filial</b>, <b>Cidade</b> ou <b>Vendedor</b>. Deixe em <b>"Todos"</b> para ver os dados completos.</span>
 </div>
 
 <div class="filters">
@@ -152,7 +152,7 @@ function parseData(v) {
   var s = String(v).trim(), p = s.split('/');
   if (p.length === 3) {
     var a = parseInt(p[0]), b = parseInt(p[1]), c = parseInt(p[2]);
-    if (c &lt; 100) c += 2000;
+    if (c < 100) c += 2000;
     if (a > 12) return new Date(c, b-1, a, 12, 0, 0);
     if (b > 12) return new Date(c, a-1, b, 12, 0, 0);
     return new Date(c, a-1, b, 12, 0, 0);
@@ -172,8 +172,9 @@ function toast(m) {
 }
 
 function processar(registros) {
+  // Lê metas 100% (colunas J-K)
   metas100 = {};
-  for (var i = 0; i &lt; registros.length; i++) {
+  for (var i = 0; i < registros.length; i++) {
     var row = registros[i];
     var colJ = String(row[9] || '').trim();
     var colK = String(row[10] || '').trim();
@@ -183,34 +184,46 @@ function processar(registros) {
       if (meta > 0) metas100[vendedor] = meta;
     }
   }
+
+  // Lê dados principais (colunas A-F)
   dados = [];
-  for (var i = 1; i &lt; registros.length; i++) {
+  for (var i = 1; i < registros.length; i++) {
     var row = registros[i];
+    
+    // Pula linhas das tabelas secundárias (Meta 100%, Checkpoints)
     var cidade = String(row[0] || '').trim();
     if (!cidade || cidade.match(/^(cidade|total|meta|)$/i)) continue;
+    
     var vendedor = String(row[2] || '').trim();
     var produzido = parseNum(row[3]);
     var meta = parseNum(row[4]);
     var dataRaw = row[5];
+    
     if (!vendedor || vendedor.match(/^(cidade|vendedor|total|meta|)$/i)) continue;
-    if (isNaN(produzido) || produzido === 0) continue;
-    if (isNaN(meta) || meta === 0) continue;
+    if (isNaN(produzido) || produzido <= 0) continue;
+    if (isNaN(meta) || meta <= 0) continue;
+    if (!dataRaw) continue;
+    
     var dt = parseData(dataRaw);
+    if (!dt) continue;
+    
     dados.push({
       cidade: cidade,
       filial: String(row[1]||'').trim(),
       vendedor: vendedor,
       produzido: produzido,
       meta: meta,
-      mes: dt ? dt.toLocaleDateString('pt-BR', {month:'long', year:'numeric'}) : 'N/A',
-      dia: dt ? dt.toLocaleDateString('pt-BR') : 'N/A'
+      mes: dt.toLocaleDateString('pt-BR', {month:'long', year:'numeric'}),
+      dia: dt.toLocaleDateString('pt-BR')
     });
   }
+
   if (dados.length === 0) {
     document.getElementById('erroTexto').innerHTML = 'Nenhum registro encontrado. Verifique se a planilha tem as colunas: Cidade, Filial, Vendedor, Produzido, Meta, Data.';
     document.getElementById('erroMsg').style.display = 'block';
     return;
   }
+  
   document.getElementById('erroMsg').style.display = 'none';
   document.getElementById('ultAtualizacao').textContent = new Date().toLocaleString('pt-BR');
   preencherFiltros();
@@ -220,23 +233,35 @@ function processar(registros) {
 }
 
 async function carregarDados() {
+  // Limpa estado anterior
   dados = [];
   filtrados = [];
   metas100 = {};
   Object.keys(graf).forEach(function(k) { destruir(k); });
+  
   toast('Carregando dados...');
   document.getElementById('erroMsg').style.display = 'none';
   try {
     var url = CAMINHO + '?_=' + Date.now();
     var r = await fetch(url, { cache: 'no-store' });
-    if (!r.ok) throw new Error('Arquivo dados.xlsx não encontrado (HTTP ' + r.status + ').');
+    if (!r.ok) {
+      // Tenta com caminho alternativo (para GitHub Pages)
+      var url2 = './dados.xlsx?_=' + Date.now();
+      var r2 = await fetch(url2, { cache: 'no-store' });
+      if (!r2.ok) throw new Error('Arquivo dados.xlsx não encontrado.');
+      var buffer = await r2.arrayBuffer();
+      var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+      var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+      processar(dadosBrutos);
+      return;
+    }
     var buffer = await r.arrayBuffer();
     var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
     var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
     processar(dadosBrutos);
   } catch(e) {
     console.error(e);
-    document.getElementById('erroTexto').innerHTML = e.message + '<br><br><b>Para atualizar os dados:</b><br>1. No Google Sheets, clique em <b>Arquivo &gt; Baixar &gt; Microsoft Excel (.xlsx)</b><br>2. Mantenha a coluna extra <b>Meta 100%</b> com as metas individuais<br>3. Renomeie para <b>dados.xlsx</b> e faça upload no GitHub<br>4. Clique em <b>Atualizar</b> aqui no dashboard';
+    document.getElementById('erroTexto').innerHTML = e.message + '<br><br><b>Para atualizar os dados:</b><br>1. No Google Sheets, clique em <b>Arquivo &gt; Baixar &gt; Microsoft Excel (.xlsx)</b><br>2. Mantenha a coluna extra <b>Meta 100%</b> com as metas individuais<br>3. Renomeie para <b>dados.xlsx</b> e faça upload no seu repositório<br>4. Clique em <b>Atualizar</b> aqui no dashboard';
     document.getElementById('erroMsg').style.display = 'block';
     toast('Erro ao carregar');
   }
@@ -266,6 +291,7 @@ function aplicarFiltros() {
     vendedor: document.getElementById('fVendedor').value
   };
   
+  // Se o Dia não tem "Todos", filtra pelo dia selecionado
   filtrados = dados.filter(function(r) {
     return (f.mes === 'all' || r.mes === f.mes) && 
            (r.dia === f.dia) && 
@@ -278,7 +304,11 @@ function aplicarFiltros() {
 }
 
 function renderizar(f) {
-  if (!filtrados.length) { ['kpiMeta','kpiProd','kpiPerc','kpiTop','kpiDias'].forEach(function(id){document.getElementById(id).textContent='—';}); return; }
+  if (!filtrados || !filtrados.length) {
+    ['kpiMeta','kpiProd','kpiPerc','kpiTop','kpiDias'].forEach(function(id){document.getElementById(id).textContent='—';});
+    return;
+  }
+  
   var tMeta = filtrados.reduce(function(s,r){return s+r.meta;}, 0);
   var tProd = filtrados.reduce(function(s,r){return s+r.produzido;}, 0);
   var perc = tMeta > 0 ? (tProd / tMeta * 100) : 0;
@@ -292,9 +322,9 @@ function renderizar(f) {
   var vends = Object.keys(agrupado).map(function(n) { return { nome: n, prod: agrupado[n].prod, meta: agrupado[n].meta, pct: agrupado[n].meta > 0 ? (agrupado[n].prod / agrupado[n].meta * 100) : 0, meta100: metas100[n.toLowerCase().trim()] || 0 }; }).sort(function(a,b) { return b.prod - a.prod; });
   document.getElementById('kpiTop').textContent = vends.length ? vends[0].nome + ' (' + vends[0].pct.toFixed(1).replace('.',',') + '%)' : '—';
   
-  // Evolução diária: sempre mostra todos os dias do mês (ignora filtro de dia)
+  // Evolução diária: usa sempre o mês selecionado (ignora filtro de dia)
   var dadosEvolucao = dados;
-  if (f.mes !== 'all') {
+  if (f && f.mes !== 'all') {
     dadosEvolucao = dados.filter(function(r) { return r.mes === f.mes; });
   }
   
