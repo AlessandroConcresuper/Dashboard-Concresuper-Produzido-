@@ -62,7 +62,6 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 </style>
 </head>
 <body>
-
 <div class="header">
 <div class="brand">
 <div class="logo">C</div>
@@ -78,12 +77,10 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <button class="btn" onclick="carregarDados()">Atualizar</button>
 </div>
 </div>
-
 <div class="info-banner">
 <span style="font-size:18px">💡</span>
 <span>Use os filtros abaixo para visualizar os dados por <b>Mês</b>, <b>Dia</b>, <b>Filial</b>, <b>Cidade</b> ou <b>Vendedor</b>. Deixe em <b>"Todos"</b> para ver os dados completos.</span>
 </div>
-
 <div class="filters">
 <div class="filter-group"><label>Mês</label><select id="fMes" onchange="aplicarFiltros()"><option value="all">Todos os Meses</option></select></div>
 <div class="filter-group"><label>Dia</label><select id="fDia" onchange="aplicarFiltros()"></select></div>
@@ -91,9 +88,7 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <div class="filter-group"><label>Cidade</label><select id="fCidade" onchange="aplicarFiltros()"><option value="all">Todas as Cidades</option></select></div>
 <div class="filter-group"><label>Vendedor</label><select id="fVendedor" onchange="aplicarFiltros()"><option value="all">Todos os Vendedores</option></select></div>
 </div>
-
 <div class="erro-box" id="erroMsg"><b>Atenção:</b> <span id="erroTexto"></span></div>
-
 <div class="kpi-grid">
 <div class="kpi-card"><p class="kpi-label">Meta Total do Período</p><p class="kpi-value" id="kpiMeta">—</p></div>
 <div class="kpi-card"><p class="kpi-label">Volume Produzido</p><p class="kpi-value" id="kpiProd">—</p></div>
@@ -101,17 +96,14 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <div class="kpi-card"><p class="kpi-label">Melhor Desempenho</p><p class="kpi-value" id="kpiTop" style="font-size:18px">—</p></div>
 <div class="kpi-card"><p class="kpi-label">Dias Restantes no Mês</p><p class="kpi-value" id="kpiDias">—</p></div>
 </div>
-
 <div class="section-title">Comparativo contra Meta 100% Individual <span class="badge">NOVO</span></div>
 <div class="charts-grid">
 <div class="panel chart-full"><div class="panel-title">Produzido vs Meta 100% Personalizada</div><div class="chart-area" id="chartMeta100Area"><canvas id="chartMeta100"></canvas></div></div>
 </div>
-
 <div class="section-title">Percentual de Atingimento por Vendedor <span class="badge">%</span></div>
 <div class="charts-grid">
 <div class="panel chart-full"><div class="panel-title">% Atingido contra a Meta 100% Individual</div><div class="chart-area"><canvas id="chartPctMeta100"></canvas></div></div>
 </div>
-
 <div class="section-title">Análise de Desempenho</div>
 <div class="charts-grid">
 <div class="panel"><div class="panel-title">Ranking por Volume Produzido</div><div class="chart-area"><canvas id="chartRank"></canvas></div></div>
@@ -119,10 +111,8 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <div class="panel"><div class="panel-title">Evolução Diária das Vendas</div><div class="chart-area"><canvas id="chartEvo"></canvas></div></div>
 <div class="panel"><div class="panel-title">Participação de Cada Vendedor</div><div class="chart-area"><canvas id="chartPart"></canvas></div></div>
 </div>
-
 <div class="section-title">Progresso Individual das Metas</div>
 <div class="progress-grid" id="progGrid"></div>
-
 <div class="section-title">Classificação Geral</div>
 <div class="ranking-section">
 <div class="podium" id="podium"></div>
@@ -131,20 +121,23 @@ body{background:#0B1420;color:#fff;min-height:100vh;padding:20px}
 <tbody id="rankBody"></tbody>
 </table>
 </div>
-
 <div class="toast" id="toast">Carregando...</div>
-
 <script>
+/* ==========================================
+   CONFIGURAÇÃO
+   ========================================== */
 var CAMINHO = 'dados.xlsx';
-var dados = [], filtrados = [], metas100 = {}, graf = {};
+var dados = [], filtrados = [], metas100PorMes = {}, metas100Geral = {}, graf = {};
 
+/* ==========================================
+   FUNÇÕES UTILITÁRIAS
+   ========================================== */
 function parseNum(v) {
   if (v == null || v === '') return 0;
   if (typeof v === 'number') return isNaN(v) ? 0 : v;
   var s = String(v).replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.').trim();
   return parseFloat(s) || 0;
 }
-
 function parseData(v) {
   if (!v) return null;
   if (v instanceof Date && !isNaN(v)) return v;
@@ -160,10 +153,8 @@ function parseData(v) {
   var d = new Date(s);
   return isNaN(d) ? null : d;
 }
-
 function fmt(v) { return (v||0).toLocaleString('pt-BR', {minFractionDigits:2, maxFractionDigits:2}) + ' m³'; }
 function fmtNum(v) { return (v||0).toLocaleString('pt-BR', {minFractionDigits:2, maxFractionDigits:2}); }
-
 function toast(m) {
   var t = document.getElementById('toast');
   t.textContent = m; t.style.display = 'block';
@@ -171,45 +162,142 @@ function toast(m) {
   t._timer = setTimeout(function(){t.style.display='none'}, 3500);
 }
 
-function processar(registros) {
-  console.log('Total de linhas na planilha:', registros.length);
-  
-  metas100 = {};
+/* ==========================================
+   DETECÇÃO DE COLUNAS POR NOME
+   Lê o cabeçalho e mapeia nomes para índices.
+   Fallback para posições padrão (A-F) se não encontrar.
+   ========================================== */
+function detectarColunas(headerRow) {
+  var map = {};
+  var maxCol = Math.min((headerRow || []).length, 10);
+  for (var c = 0; c < maxCol; c++) {
+    var h = String(headerRow[c] || '').trim().toLowerCase();
+    if (!h) continue;
+    if (h.indexOf('cidade') !== -1 && map.cidade === undefined) map.cidade = c;
+    else if (h.indexOf('filial') !== -1 && map.filial === undefined) map.filial = c;
+    else if (h.indexOf('vendedor') !== -1 && map.vendedor === undefined) map.vendedor = c;
+    else if (h.indexOf('produzido') !== -1 && map.produzido === undefined) map.produzido = c;
+    else if (h === 'meta' && map.meta === undefined) map.meta = c;
+    else if (h.indexOf('data') !== -1 && map.data === undefined) map.data = c;
+  }
+  if (map.cidade === undefined) map.cidade = 0;
+  if (map.filial === undefined) map.filial = 1;
+  if (map.vendedor === undefined) map.vendedor = 2;
+  if (map.produzido === undefined) map.produzido = 3;
+  if (map.meta === undefined) map.meta = 4;
+  if (map.data === undefined) map.data = 5;
+  return map;
+}
+
+/* ==========================================
+   LEITURA DE METAS 100% (MULTI-BLOCO)
+   Escaneia toda a planilha procurando cabeçalhos
+   "Meta 100% [Mês]" e lê os dados de cada bloco.
+   Suporta múltiplos meses lado a lado ou empilhados.
+   ========================================== */
+function escanearMetas100(registros) {
+  metas100PorMes = {};
+  metas100Geral = {};
+
   for (var i = 0; i < registros.length; i++) {
     var row = registros[i];
-    var colJ = String(row[9] || '').trim();
-    var colK = String(row[10] || '').trim();
-    if (colJ && colK && colJ !== 'Vendedor' && colJ !== 'Cidade') {
-      var vendedor = colJ.toLowerCase().trim();
-      var meta = parseNum(colK);
-      if (meta > 0) metas100[vendedor] = meta;
+    if (!row) continue;
+
+    for (var c = 0; c < row.length; c++) {
+      var cellVal = String(row[c] || '').trim();
+      if (cellVal.toLowerCase().indexOf('meta 100%') === -1) continue;
+
+      // Extrair nome do mês (ex: "Meta 100% Julho" -> "julho")
+      var mesNome = cellVal.replace(/meta\s*100\s*%*/i, '').trim().toLowerCase();
+      if (!mesNome) continue;
+
+      // Localizar sub-cabeçalhos Vendedor e Meta na próxima linha
+      var idxVend = -1, idxMeta100 = -1;
+
+      if (i + 1 < registros.length && registros[i + 1]) {
+        var subHeader = registros[i + 1];
+        for (var sc = c; sc < subHeader.length; sc++) {
+          var sh = String(subHeader[sc] || '').trim().toLowerCase();
+          if (sh === 'vendedor' && idxVend === -1) idxVend = sc;
+          else if (sh === 'meta' && idxMeta100 === -1) idxMeta100 = sc;
+        }
+      }
+
+      // Fallback: tentar sub-cabeçalhos na mesma linha do header
+      if (idxVend === -1 || idxMeta100 === -1) {
+        for (var sc2 = c; sc2 < row.length; sc2++) {
+          var sh2 = String(row[sc2] || '').trim().toLowerCase();
+          if (sh2 === 'vendedor' && idxVend === -1) idxVend = sc2;
+          else if (sh2 === 'meta' && idxMeta100 === -1) idxMeta100 = sc2;
+        }
+      }
+
+      if (idxVend < 0 || idxMeta100 < 0) continue;
+
+      // Ler dados do bloco
+      if (!metas100PorMes[mesNome]) metas100PorMes[mesNome] = {};
+
+      for (var dr = i + 2; dr < registros.length; dr++) {
+        var dataRow = registros[dr];
+        if (!dataRow) break;
+
+        var vend = String(dataRow[idxVend] || '').trim();
+        if (!vend || vend.toLowerCase() === 'vendedor') break;
+
+        var metaVal = parseNum(dataRow[idxMeta100]);
+        if (metaVal > 0) {
+          metas100PorMes[mesNome][vend.toLowerCase().trim()] = metaVal;
+          metas100Geral[vend.toLowerCase().trim()] = metaVal;
+        }
+      }
     }
   }
-  console.log('Metas 100% lidas:', Object.keys(metas100).length);
 
+  console.log('Metas 100% por mês:', Object.keys(metas100PorMes).map(function(m) {
+    return m + ' (' + Object.keys(metas100PorMes[m]).length + ' vendedores)';
+  }).join(', '));
+}
+
+/* ==========================================
+   PROCESSAMENTO DE DADOS
+   ========================================== */
+function processar(registros) {
+  console.log('Total de linhas na planilha:', registros.length);
+
+  // Detectar colunas por nome (com fallback para índices padrão)
+  var colMap = detectarColunas(registros[0] || []);
+  console.log('Mapeamento de colunas:', colMap);
+
+  // Escanear blocos de Meta 100% em toda a planilha
+  escanearMetas100(registros);
+
+  // Ler dados principais (lançamentos diários)
   dados = [];
   for (var i = 1; i < registros.length; i++) {
     var row = registros[i];
-    
-    var cidade = String(row[0] || '').trim();
+    if (!row) continue;
+
+    var cidade = String(row[colMap.cidade] || '').trim();
     if (!cidade || cidade.match(/^(cidade|total|meta|)$/i)) continue;
-    
-    var vendedor = String(row[2] || '').trim();
-    var produzido = parseNum(row[3]);
-    var meta = parseNum(row[4]);
-    var dataRaw = row[5];
-    
+
+    var vendedor = String(row[colMap.vendedor] || '').trim();
     if (!vendedor || vendedor.match(/^(cidade|vendedor|total|meta|)$/i)) continue;
+
+    var produzido = parseNum(row[colMap.produzido]);
     if (isNaN(produzido) || produzido <= 0) continue;
+
+    var meta = parseNum(row[colMap.meta]);
     if (isNaN(meta) || meta <= 0) continue;
+
+    var dataRaw = row[colMap.data];
     if (!dataRaw) continue;
-    
+
     var dt = parseData(dataRaw);
     if (!dt) continue;
-    
+
     dados.push({
       cidade: cidade,
-      filial: String(row[1]||'').trim(),
+      filial: String(row[colMap.filial] || '').trim(),
       vendedor: vendedor,
       produzido: produzido,
       meta: meta,
@@ -219,34 +307,37 @@ function processar(registros) {
   }
 
   console.log('Registros de dados lidos:', dados.length);
-  
+
   if (dados.length === 0) {
-    document.getElementById('erroTexto').innerHTML = 'Nenhum registro encontrado. Verifique se a planilha tem as colunas: Cidade (col A), Filial (col B), Vendedor (col C), Produzido (col D), Meta (col E), Data (col F).';
+    var headerStr = (registros[0] || []).map(function(v) { return String(v || ''); }).join(' | ');
+    document.getElementById('erroTexto').innerHTML = 'Nenhum registro encontrado. Verifique se a planilha tem as colunas: Cidade, Filial, Vendedor, Produzido, Meta, Data.<br><br><b>Cabeçalho detectado:</b> ' + headerStr;
     document.getElementById('erroMsg').style.display = 'block';
     return;
   }
-  
+
   document.getElementById('erroMsg').style.display = 'none';
   document.getElementById('ultAtualizacao').textContent = new Date().toLocaleString('pt-BR');
   preencherFiltros();
   aplicarFiltros();
-  var qtdMeta = Object.keys(metas100).length;
-  toast(dados.length + ' registros carregados' + (qtdMeta > 0 ? ' · ' + qtdMeta + ' metas individuais' : ''));
+
+  var qtdMeses = Object.keys(metas100PorMes).length;
+  toast(dados.length + ' registros carregados' + (qtdMeses > 0 ? ' · ' + qtdMeses + ' meses com Meta 100%' : ''));
 }
 
+/* ==========================================
+   CARREGAMENTO DE DADOS
+   ========================================== */
 async function carregarDados() {
   dados = [];
   filtrados = [];
-  metas100 = {};
+  metas100PorMes = {};
+  metas100Geral = {};
   Object.keys(graf).forEach(function(k) { destruir(k); });
-  
   toast('Carregando dados...');
   document.getElementById('erroMsg').style.display = 'none';
   try {
-    // Tenta múltiplos caminhos para o arquivo
     var caminhos = [CAMINHO, './dados.xlsx', 'dados.xlsx'];
     var buffer = null;
-    
     for (var c = 0; c < caminhos.length; c++) {
       try {
         var url = caminhos[c] + '?_=' + Date.now();
@@ -260,162 +351,18 @@ async function carregarDados() {
         console.log('Falha no caminho', caminhos[c], e);
       }
     }
-    
-    if (!buffer) throw new Error('Arquivo dados.xlsx não encontrado em nenhum caminho.');
-    
+    if (!buffer) throw new Error('Arquivo dados.xlsx não encontrado.');
     var wb = XLSX.read(buffer, { type: 'array', cellDates: true });
     var dadosBrutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
     processar(dadosBrutos);
   } catch(e) {
     console.error(e);
-    document.getElementById('erroTexto').innerHTML = e.message + '<br><br><b>Para atualizar os dados:</b><br>1. No Google Sheets, clique em <b>Arquivo &gt; Baixar &gt; Microsoft Excel (.xlsx)</b><br>2. Mantenha as colunas: Cidade, Filial, Vendedor, Produzido, Meta, Data<br>3. Adicione a coluna <b>Meta 100%</b> com os valores individuais<br>4. Renomeie para <b>dados.xlsx</b> e faça upload no seu repositório (mesma pasta do index.html)<br>5. Clique em <b>Atualizar</b> aqui no dashboard';
+    document.getElementById('erroTexto').innerHTML = e.message + '<br><br><b>Para atualizar os dados:</b><br>1. No Google Sheets, clique em <b>Arquivo &gt; Baixar &gt; Microsoft Excel (.xlsx)</b><br>2. Mantenha as colunas: Cidade, Filial, Vendedor, Produzido, Meta, Data<br>3. Adicione blocos de <b>Meta 100%</b> com o mês no cabeçalho (ex: "Meta 100% Julho")<br>4. Renomeie para <b>dados.xlsx</b> e faça upload no repositório<br>5. Clique em <b>Atualizar</b> aqui no dashboard';
     document.getElementById('erroMsg').style.display = 'block';
     toast('Erro ao carregar');
   }
 }
 
-function preencherFiltros() {
-  var uniq = function(arr) { var o = {}; arr.forEach(function(v) { if (v && v !== 'N/A') o[v] = 1; }); return Object.keys(o).sort(function(a,b) { return a.localeCompare(b, 'pt-BR'); }); };
-  var setar = function(id, vals, temAll) {
-    var el = document.getElementById(id);
-    el.innerHTML = '';
-    if (temAll !== false) el.innerHTML = '<option value="all">' + (id === 'fDia' ? 'Todos os Dias' : 'Todos') + '</option>';
-    vals.forEach(function(v) { var o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); });
-  };
-  setar('fMes', uniq(dados.map(function(r){return r.mes;})));
-  setar('fDia', uniq(dados.map(function(r){return r.dia;})), false);
-  setar('fFilial', uniq(dados.map(function(r){return r.filial;})));
-  setar('fCidade', uniq(dados.map(function(r){return r.cidade;})));
-  setar('fVendedor', uniq(dados.map(function(r){return r.vendedor;})));
-}
-
-function aplicarFiltros() {
-  var f = {
-    mes: document.getElementById('fMes').value,
-    dia: document.getElementById('fDia').value,
-    filial: document.getElementById('fFilial').value,
-    cidade: document.getElementById('fCidade').value,
-    vendedor: document.getElementById('fVendedor').value
-  };
-  
-  filtrados = dados.filter(function(r) {
-    return (f.mes === 'all' || r.mes === f.mes) && 
-           (r.dia === f.dia) && 
-           (f.filial === 'all' || r.filial === f.filial) && 
-           (f.cidade === 'all' || r.cidade === f.cidade) && 
-           (f.vendedor === 'all' || r.vendedor === f.vendedor);
-  });
-  
-  renderizar(f);
-}
-
-function renderizar(f) {
-  if (!filtrados || !filtrados.length) {
-    ['kpiMeta','kpiProd','kpiPerc','kpiTop','kpiDias'].forEach(function(id){document.getElementById(id).textContent='—';});
-    return;
-  }
-  
-  var tMeta = filtrados.reduce(function(s,r){return s+r.meta;}, 0);
-  var tProd = filtrados.reduce(function(s,r){return s+r.produzido;}, 0);
-  var perc = tMeta > 0 ? (tProd / tMeta * 100) : 0;
-  document.getElementById('kpiMeta').textContent = fmt(tMeta);
-  document.getElementById('kpiProd').textContent = fmt(tProd);
-  document.getElementById('kpiPerc').textContent = perc.toFixed(1).replace('.', ',') + '%';
-  var agora = new Date(), ultimo = new Date(agora.getFullYear(), agora.getMonth()+1, 0).getDate();
-  document.getElementById('kpiDias').textContent = Math.max(0, ultimo - agora.getDate());
-  var agrupado = {};
-  filtrados.forEach(function(r) { if (!agrupado[r.vendedor]) agrupado[r.vendedor] = { prod: 0, meta: 0 }; agrupado[r.vendedor].prod += r.produzido; agrupado[r.vendedor].meta += r.meta; });
-  var vends = Object.keys(agrupado).map(function(n) { return { nome: n, prod: agrupado[n].prod, meta: agrupado[n].meta, pct: agrupado[n].meta > 0 ? (agrupado[n].prod / agrupado[n].meta * 100) : 0, meta100: metas100[n.toLowerCase().trim()] || 0 }; }).sort(function(a,b) { return b.prod - a.prod; });
-  document.getElementById('kpiTop').textContent = vends.length ? vends[0].nome + ' (' + vends[0].pct.toFixed(1).replace('.',',') + '%)' : '—';
-  
-  var dadosEvolucao = dados;
-  if (f && f.mes !== 'all') {
-    dadosEvolucao = dados.filter(function(r) { return r.mes === f.mes; });
-  }
-  
-  renderizarGraficos(vends, dadosEvolucao);
-  renderizarProgresso(vends);
-  renderizarRanking(vends);
-}
-
-function destruir(k) { if (graf[k]) { try { graf[k].destroy(); } catch(e) {} delete graf[k]; } }
-
-function renderizarGraficos(vends, dadosEvolucao) {
-  Chart.defaults.color = '#8CA0B3'; Chart.defaults.font.family = 'Inter';
-  var grid = { color: 'rgba(255,255,255,.05)' }, nomes = vends.map(function(v){return v.nome;}), prods = vends.map(function(v){return v.prod;}), metas = vends.map(function(v){return v.meta;});
-  var cores = vends.map(function(v){return v.pct >= 100 ? '#2ECC71' : '#F5B400';});
-
-  destruir('rank');
-  graf.rank = new Chart(document.getElementById('chartRank'), { type:'bar', data:{labels:nomes, datasets:[{data:prods, backgroundColor:cores, borderRadius:5}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:grid}, y:{grid:{display:false}}}} });
-  
-  destruir('metaProd');
-  graf.metaProd = new Chart(document.getElementById('chartMetaProd'), { type:'bar', data:{labels:nomes, datasets:[{label:'Meta', data:metas, backgroundColor:'rgba(255,255,255,.1)', borderRadius:5},{label:'Realizado', data:prods, backgroundColor:cores, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid}}} });
-  
-  destruir('evo');
-  var evo = {};
-  dadosEvolucao.forEach(function(r){var k=r.dia; if (k !== 'N/A') evo[k] = (evo[k]||0) + r.produzido; });
-  var labs = Object.keys(evo).sort(function(a,b){
-    var ma=a.match(/(\d{2})\/(\d{2})\/(\d{4})/),mb=b.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if(ma&&mb) return new Date(ma[3],ma[2]-1,ma[1])-new Date(mb[3],mb[2]-1,mb[1]);
-    return a.localeCompare(b);
-  });
-  if (labs.length > 0) {
-    graf.evo = new Chart(document.getElementById('chartEvo'), { type:'line', data:{labels:labs, datasets:[{data:labs.map(function(l){return evo[l];}), borderColor:'#F5B400', backgroundColor:'rgba(245,180,0,.1)', fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#F5B400'}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}}, y:{grid:grid}}}});
-  }
-  
-  destruir('part');
-  var paleta = ['#F5B400','#4C8DFF','#2ECC71','#FF6B6B','#B084F5','#4FD1C5','#F783AC','#F0A868','#63C7FF','#E4C441'];
-  graf.part = new Chart(document.getElementById('chartPart'), { type:'doughnut', data:{labels:nomes, datasets:[{data:prods, backgroundColor:nomes.map(function(v,i){return paleta[i%paleta.length];}), borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, cutout:'70%', plugins:{legend:{position:'bottom', labels:{color:'#fff', boxWidth:10, usePointStyle:true}}}} });
-
-  destruir('meta100');
-  var area = document.getElementById('chartMeta100Area');
-  if (!area) return;
-  var temMeta100 = vends.some(function(v) { return v.meta100 > 0; });
-  if (temMeta100) {
-    var canvas = document.getElementById('chartMeta100');
-    if (!canvas) { area.innerHTML = '<canvas id="chartMeta100"></canvas>'; canvas = document.getElementById('chartMeta100'); }
-    var cores100 = vends.map(function(v) { return v.meta100 > 0 ? (v.prod >= v.meta100 ? '#2ECC71' : '#F5B400') : 'rgba(255,255,255,.1)'; });
-    graf.meta100 = new Chart(canvas, { type:'bar', data:{labels:nomes, datasets:[{label:'Meta 100% Personalizada', data:vends.map(function(v){return v.meta100;}), backgroundColor:'rgba(255,255,255,.15)', borderRadius:5},{label:'Volume Produzido', data:prods, backgroundColor:cores100, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'top', labels:{color:'#fff'}}}, scales:{y:{grid:grid, beginAtZero:true}}}});
-  } else {
-    area.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
-  }
-
-  destruir('pctMeta100');
-  var canvasPct = document.getElementById('chartPctMeta100');
-  if (!canvasPct) return;
-  if (temMeta100) {
-    var pctsMeta100 = vends.map(function(v) { return v.meta100 > 0 ? Math.round(v.prod / v.meta100 * 100) : 0; });
-    var coresPct = vends.map(function(v) { var p = v.meta100 > 0 ? (v.prod / v.meta100 * 100) : 0; return p >= 100 ? '#2ECC71' : (p >= 70 ? '#F5B400' : '#FF5C5C'); });
-    graf.pctMeta100 = new Chart(canvasPct, { type:'bar', data:{labels:nomes, datasets:[{label:'% Atingido', data:pctsMeta100, backgroundColor:coresPct, borderRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{grid:grid, beginAtZero:true, max:Math.max(100, Math.max.apply(null, pctsMeta100)*1.1), ticks:{callback:function(val){return val+'%';}}}, x:{grid:{display:false}}}}});
-  } else {
-    document.getElementById('chartPctMeta100').parentElement.innerHTML = '<div class="empty-state"><p style="font-size:40px;margin-bottom:10px">📊</p><p style="font-weight:600">Adicione a coluna <b>"Meta 100%"</b> na sua planilha</p><p style="font-size:13px;margin-top:5px;color:#8CA0B3">Com Cidade, Filial, Vendedor e o valor da meta individual de cada vendedor</p></div>';
-  }
-}
-
-function renderizarProgresso(vends) {
-  var el = document.getElementById('progGrid'); el.innerHTML = '';
-  vends.slice().sort(function(a,b){return b.pct-a.pct;}).forEach(function(v){
-    var cor = v.pct >= 100 ? '#2ECC71' : (v.pct >= 70 ? '#F5B400' : '#FF5C5C');
-    el.innerHTML += '<div class="prog-card"><div class="prog-head"><span>'+v.nome+'</span><span style="color:'+cor+'">'+v.pct.toFixed(1).replace('.',',')+'%</span></div><div class="bar-bg"><div class="bar-fill" style="width:'+Math.min(100,v.pct)+'%;background:'+cor+'"></div></div><div class="prog-det"><span>📦 '+fmtNum(v.prod)+' m³</span><span>🎯 '+fmtNum(v.meta)+' m³</span><span style="font-weight:700;color:'+cor+'">📊 '+v.pct.toFixed(1).replace('.',',')+'%</span></div></div>';
-  });
-}
-
-function renderizarRanking(vends) {
-  var ordenado = vends.slice().sort(function(a,b){return b.pct-a.pct;});
-  var podiumEl = document.getElementById('podium'), rankBody = document.getElementById('rankBody');
-  podiumEl.innerHTML = ''; rankBody.innerHTML = '';
-  [1,0,2].forEach(function(idx) {
-    if (ordenado[idx]) {
-      podiumEl.innerHTML += '<div class="pod-item ' + ['p1','p2','p3'][idx] + '"><div class="medal">' + ['🥇','🥈','🥉'][idx] + '</div><div class="pod-name">' + ordenado[idx].nome + '</div><div class="pod-pct">' + ordenado[idx].pct.toFixed(1).replace('.',',') + '%</div></div>';
-    }
-  });
-  ordenado.forEach(function(v,i){
-    var cor = v.pct >= 100 ? '#2ECC71' : (v.pct >= 70 ? '#F5B400' : '#FF5C5C');
-    rankBody.innerHTML += '<tr><td style="font-weight:800;color:#8CA0B3">'+(i+1)+'º</td><td style="font-weight:700">'+v.nome+'</td><td>'+fmt(v.prod)+'</td><td>'+fmt(v.meta)+'</td><td style="font-weight:800;color:'+cor+'">'+v.pct.toFixed(1).replace('.',',')+'%</td></tr>';
-  });
-}
-
-carregarDados();
-</script>
-</body>
-</html>
+/* ==========================================
+   FILTROS
+   ========================================== */
